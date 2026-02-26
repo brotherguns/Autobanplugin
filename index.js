@@ -54,7 +54,7 @@ function onMessage(event) {
         const message = event.message;
         if (!message) return;
         const authorId = message.author?.id;
-        const channelId = event.channelId;
+        const channelId = event.channelId ?? message.channel_id;
         if (!authorId || !channelId || authorId === MY_ID) return;
         if (!isScamMessage(message)) return;
         const MessageModule = metro.findByProps("sendMessage", "editMessage");
