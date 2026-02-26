@@ -1,6 +1,3 @@
-const FluxDispatcher = window.vendetta.metro.common.FluxDispatcher;
-const findByProps = window.vendetta.metro.findByProps;
-
 const MY_ID = "877502759404974110";
 
 const SCAM_IDS = new Set([
@@ -49,6 +46,9 @@ function isScamMessage(message) {
     return false;
 }
 
+var FluxDispatcher;
+var findByProps;
+
 function onMessage(event) {
     try {
         const message = event.message;
@@ -66,9 +66,11 @@ function onMessage(event) {
 
 module.exports = {
     onLoad: async () => {
+        FluxDispatcher = window.vendetta.metro.common.FluxDispatcher;
+        findByProps = window.vendetta.metro.findByProps;
         FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
     },
     onUnload: async () => {
-        FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
+        if (FluxDispatcher) FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
     },
 };
