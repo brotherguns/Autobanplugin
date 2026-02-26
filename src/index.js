@@ -1,4 +1,4 @@
-import { fluxDispatcher } from "@vendetta/metro/common";
+import { FluxDispatcher } from "@vendetta/metro/common";
 import { findByProps } from "@vendetta/metro";
 
 const MY_ID = "877502759404974110";
@@ -37,7 +37,10 @@ function isScamMessage(message) {
         }
     }
     const content = message.content || "";
-    if (content.includes("cdn.discordapp.com/attachments/") || content.includes("media.discordapp.net/attachments/")) {
+    if (
+        content.includes("cdn.discordapp.com/attachments/") ||
+        content.includes("media.discordapp.net/attachments/")
+    ) {
         for (const token of content.split(/\s+/)) {
             if (SCAM_IDS.has(extractAttachmentId(token))) return true;
         }
@@ -65,12 +68,12 @@ export default {
             }
         };
 
-        fluxDispatcher.subscribe("MESSAGE_CREATE", messageHandler);
+        FluxDispatcher.subscribe("MESSAGE_CREATE", messageHandler);
     },
 
     onUnload: () => {
         if (messageHandler) {
-            fluxDispatcher.unsubscribe("MESSAGE_CREATE", messageHandler);
+            FluxDispatcher.unsubscribe("MESSAGE_CREATE", messageHandler);
             messageHandler = null;
         }
     },
