@@ -64,7 +64,7 @@ function onMessage(event) {
     }
 }
 
-export default {
+module.exports = {
     onLoad: async () => {
         FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
     },
