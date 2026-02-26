@@ -1,5 +1,5 @@
-import { FluxDispatcher } from "@vendetta/metro/common";
-import { findByProps } from "@vendetta/metro";
+const FluxDispatcher = window.vendetta.metro.common.FluxDispatcher;
+const findByProps = window.vendetta.metro.findByProps;
 
 const MY_ID = "877502759404974110";
 
@@ -64,7 +64,7 @@ function onMessage(event) {
     }
 }
 
-export default {
+module.exports = {
     onLoad: async () => {
         FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
     },
