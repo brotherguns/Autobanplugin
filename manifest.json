@@ -1,0 +1,11 @@
+{
+    "name": "AutoBanScammer",
+    "description": "Automatically bans users who send 4 specific scam image CDN links by issuing ?ban <id>.",
+    "authors": [
+        {
+            "name": "you",
+            "id": "877502759404974110"
+        }
+    ],
+    "main": "index.js"
+}
