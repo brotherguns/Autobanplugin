@@ -16,18 +16,21 @@ const SCAM_HM = new Set([
 
 function extractAttachmentId(url) {
     if (typeof url !== "string") return null;
-    const parts = url.split("/");
-    const idx = parts.indexOf("attachments");
+    var parts = url.split("/");
+    var idx = parts.indexOf("attachments");
     if (idx === -1) return null;
-    const id = parts[idx + 2];
+    var id = parts[idx + 2];
     if (!id) return null;
     return id.split("?")[0];
 }
 
 function extractHm(url) {
     if (typeof url !== "string") return null;
-    const match = url.match(/[?&]hm=([a-f0-9]+)/);
-    return match ? match[1] : null;
+    var idx = url.indexOf("hm=");
+    if (idx === -1) return null;
+    var val = url.substring(idx + 3);
+    var end = val.indexOf("&");
+    return end === -1 ? val : val.substring(0, end);
 }
 
 function isScamUrl(url) {
@@ -35,12 +38,23 @@ function isScamUrl(url) {
 }
 
 function isScamMessage(message) {
-    for (const a of (message.attachments || [])) {
+    var i, a, e, urls, url;
+    var attachments = message.attachments || [];
+    for (i = 0; i < attachments.length; i++) {
+        a = attachments[i];
         if (isScamUrl(a.url) || isScamUrl(a.proxy_url)) return true;
     }
-    for (const e of (message.embeds || [])) {
-        for (const url of [e.image?.url, e.image?.proxy_url, e.thumbnail?.url, e.thumbnail?.proxy_url]) {
-            if (isScamUrl(url)) return true;
+    var embeds = message.embeds || [];
+    for (i = 0; i < embeds.length; i++) {
+        e = embeds[i];
+        urls = [
+            e.image ? e.image.url : null,
+            e.image ? e.image.proxy_url : null,
+            e.thumbnail ? e.thumbnail.url : null,
+            e.thumbnail ? e.thumbnail.proxy_url : null,
+        ];
+        for (var j = 0; j < urls.length; j++) {
+            if (isScamUrl(urls[j])) return true;
         }
     }
     return false;
@@ -51,13 +65,13 @@ var findByProps;
 
 function onMessage(event) {
     try {
-        const message = event.message;
+        var message = event && event.message;
         if (!message) return;
-        const authorId = message.author?.id;
-        const channelId = event.channelId ?? message.channel_id;
+        var authorId = message.author && message.author.id;
+        var channelId = event.channelId || message.channel_id;
         if (!authorId || !channelId || authorId === MY_ID) return;
         if (!isScamMessage(message)) return;
-        const MessageModule = findByProps("sendMessage", "editMessage");
+        var MessageModule = findByProps("sendMessage", "editMessage");
         MessageModule.sendMessage(channelId, { content: "?ban " + authorId });
     } catch (err) {
         console.error("[AutoBanScammer]", err);
@@ -65,12 +79,12 @@ function onMessage(event) {
 }
 
 module.exports = {
-    onLoad: async () => {
+    onLoad: function() {
         FluxDispatcher = window.vendetta.metro.common.FluxDispatcher;
         findByProps = window.vendetta.metro.findByProps;
         FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
     },
-    onUnload: async () => {
+    onUnload: function() {
         if (FluxDispatcher) FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
     },
 };
