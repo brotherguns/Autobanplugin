@@ -1,0 +1,46 @@
+name: Build Plugin
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Build plugin
+        run: npm run build
+        
+      - name: Copy manifest
+        run: cp manifest.json dist/
+        
+      - name: Publish to builds branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: builds
+```
+
+---
+
+**Step 2 — Set GitHub Pages to serve from `builds` branch**
+- Repo → Settings → Pages → Branch: `builds`, folder: `/ (root)` → Save
+
+**Step 3 — Wait for the Action to run** (check the Actions tab, should take ~30 seconds)
+
+**Step 4 — Install in Kettu:**
+```
+https://brotherguns.github.io/Autobanplugin
