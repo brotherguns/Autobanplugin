@@ -1,8 +1,7 @@
 'use strict';
 
-var common = require('@vendetta/metro/common');
-var metro = require('@vendetta/metro');
-
+const FluxDispatcher = window.vendetta.metro.common.FluxDispatcher;
+const findByProps = window.vendetta.metro.findByProps;
 const MY_ID = "877502759404974110";
 const SCAM_IDS = new Set([
     "1476688857930924105",
@@ -57,7 +56,7 @@ function onMessage(event) {
         const channelId = event.channelId ?? message.channel_id;
         if (!authorId || !channelId || authorId === MY_ID) return;
         if (!isScamMessage(message)) return;
-        const MessageModule = metro.findByProps("sendMessage", "editMessage");
+        const MessageModule = findByProps("sendMessage", "editMessage");
         MessageModule.sendMessage(channelId, {
             content: "?ban " + authorId
         });
@@ -67,10 +66,10 @@ function onMessage(event) {
 }
 var index = {
     onLoad: async ()=>{
-        common.FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
+        FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
     },
     onUnload: async ()=>{
-        common.FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
+        FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
     }
 };
 
