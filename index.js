@@ -45,32 +45,28 @@ function isScamMessage(message) {
     }
     return false;
 }
-let messageHandler = null;
-var index = {
-    onLoad: ()=>{
+function onMessage(event) {
+    try {
+        const message = event.message;
+        if (!message) return;
+        const authorId = message.author?.id;
+        const channelId = event.channelId;
+        if (!authorId || !channelId || authorId === MY_ID) return;
+        if (!isScamMessage(message)) return;
         const MessageModule = metro.findByProps("sendMessage", "editMessage");
-        messageHandler = (event)=>{
-            try {
-                const message = event?.message;
-                if (!message) return;
-                const authorId = message.author?.id;
-                const channelId = message.channel_id;
-                if (!authorId || !channelId || authorId === MY_ID) return;
-                if (!isScamMessage(message)) return;
-                MessageModule.sendMessage(channelId, {
-                    content: "?ban " + authorId
-                });
-            } catch (err) {
-                console.error("[AutoBanScammer]", err);
-            }
-        };
-        common.FluxDispatcher.subscribe("MESSAGE_CREATE", messageHandler);
+        MessageModule.sendMessage(channelId, {
+            content: "?ban " + authorId
+        });
+    } catch (err) {
+        console.error("[AutoBanScammer]", err);
+    }
+}
+var index = {
+    onLoad: async ()=>{
+        common.FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
     },
-    onUnload: ()=>{
-        if (messageHandler) {
-            common.FluxDispatcher.unsubscribe("MESSAGE_CREATE", messageHandler);
-            messageHandler = null;
-        }
+    onUnload: async ()=>{
+        common.FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
     }
 };
 
