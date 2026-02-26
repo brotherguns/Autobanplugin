@@ -66,7 +66,7 @@
         return null;
     }
 
-    module.exports = {
+    var plugin = {
         onLoad: function () {
             var metro = getMetro();
             if (!metro) { console.error("[AutoBanScammer] No metro found"); return; }
@@ -100,4 +100,7 @@
             }
         },
     };
+
+    if (typeof module !== "undefined") module.exports = plugin;
+    else window.__vendetta_plugin = plugin;
 })();
