@@ -3,7 +3,7 @@
     "description": "Automatically bans users who send 4 specific scam image CDN links by issuing ?ban <id>.",
     "authors": [
         {
-            "name": "you",
+            "name": "brotherguns",
             "id": "877502759404974110"
         }
     ],
