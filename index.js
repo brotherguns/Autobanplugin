@@ -64,11 +64,11 @@ var index = {
                 console.error("[AutoBanScammer]", err);
             }
         };
-        common.fluxDispatcher.subscribe("MESSAGE_CREATE", messageHandler);
+        common.FluxDispatcher.subscribe("MESSAGE_CREATE", messageHandler);
     },
     onUnload: ()=>{
         if (messageHandler) {
-            common.fluxDispatcher.unsubscribe("MESSAGE_CREATE", messageHandler);
+            common.FluxDispatcher.unsubscribe("MESSAGE_CREATE", messageHandler);
             messageHandler = null;
         }
     }
