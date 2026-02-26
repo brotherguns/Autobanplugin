@@ -3,7 +3,6 @@ import { findByProps } from "@vendetta/metro";
 
 const MY_ID = "877502759404974110";
 
-// Match by attachment ID (same upload)
 const SCAM_IDS = new Set([
     "1476688857930924105",
     "1476688858375782701",
@@ -11,7 +10,6 @@ const SCAM_IDS = new Set([
     "1476688859076104313",
 ]);
 
-// Match by content hash (same image even if re-uploaded)
 const SCAM_HM = new Set([
     "d75ba302ba17fab02ad7a1de76e7282af8c86d6c7a17b0bfb5762dd67f7b9462",
     "21711a1fd5242d05e2ee36263b3b98e45423047a45e34ea7daecafed581ec76d",
@@ -74,10 +72,3 @@ export default {
         FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
     },
 };
-```
-
-Commit this, wait for the green action, then disable/re-enable the plugin and test again. The `hm=` hash matching means it'll catch the same scam images even if they get re-uploaded to a new link.
-
-Also — one quick thing to verify first. Run this eval before testing so we can see exactly what a scam message looks like on your end:
-```
-/eval code: window.vendetta.metro.common.FluxDispatcher.subscribe("MESSAGE_CREATE", function(e){ if(e.message.attachments && e.message.attachments.length > 0) alert(JSON.stringify(e.message.attachments[0])) })
