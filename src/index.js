@@ -48,33 +48,26 @@ function isScamMessage(message) {
     return false;
 }
 
-let messageHandler = null;
+function onMessage(event) {
+    try {
+        const message = event.message;
+        if (!message) return;
+        const authorId = message.author?.id;
+        const channelId = event.channelId;
+        if (!authorId || !channelId || authorId === MY_ID) return;
+        if (!isScamMessage(message)) return;
+        const MessageModule = findByProps("sendMessage", "editMessage");
+        MessageModule.sendMessage(channelId, { content: "?ban " + authorId });
+    } catch (err) {
+        console.error("[AutoBanScammer]", err);
+    }
+}
 
 export default {
-    onLoad: () => {
-        const MessageModule = findByProps("sendMessage", "editMessage");
-
-        messageHandler = (event) => {
-            try {
-                const message = event?.message;
-                if (!message) return;
-                const authorId = message.author?.id;
-                const channelId = message.channel_id;
-                if (!authorId || !channelId || authorId === MY_ID) return;
-                if (!isScamMessage(message)) return;
-                MessageModule.sendMessage(channelId, { content: "?ban " + authorId });
-            } catch (err) {
-                console.error("[AutoBanScammer]", err);
-            }
-        };
-
-        FluxDispatcher.subscribe("MESSAGE_CREATE", messageHandler);
+    onLoad: async () => {
+        FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
     },
-
-    onUnload: () => {
-        if (messageHandler) {
-            FluxDispatcher.unsubscribe("MESSAGE_CREATE", messageHandler);
-            messageHandler = null;
-        }
+    onUnload: async () => {
+        FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
     },
 };
