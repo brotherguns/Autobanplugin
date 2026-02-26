@@ -3,6 +3,7 @@ import { findByProps } from "@vendetta/metro";
 
 const MY_ID = "877502759404974110";
 
+// Match by attachment ID (same upload)
 const SCAM_IDS = new Set([
     "1476688857930924105",
     "1476688858375782701",
@@ -10,39 +11,41 @@ const SCAM_IDS = new Set([
     "1476688859076104313",
 ]);
 
+// Match by content hash (same image even if re-uploaded)
+const SCAM_HM = new Set([
+    "d75ba302ba17fab02ad7a1de76e7282af8c86d6c7a17b0bfb5762dd67f7b9462",
+    "21711a1fd5242d05e2ee36263b3b98e45423047a45e34ea7daecafed581ec76d",
+    "6425e2a23c039ff644c62025b31716a3a5969621d7ee837fb39d4412dfd3dc77",
+    "26aec64263f89c79d71455f6e8c47ffe6d2180c6d006bfb7b9cba260699fbcab",
+]);
+
 function extractAttachmentId(url) {
     if (typeof url !== "string") return null;
-    if (
-        !url.includes("cdn.discordapp.com/attachments/") &&
-        !url.includes("media.discordapp.net/attachments/")
-    ) return null;
     const parts = url.split("/");
     const idx = parts.indexOf("attachments");
     if (idx === -1) return null;
     const id = parts[idx + 2];
-    if (!id || !/^\d{17,20}$/.test(id)) return null;
-    return id;
+    if (!id) return null;
+    return id.split("?")[0];
+}
+
+function extractHm(url) {
+    if (typeof url !== "string") return null;
+    const match = url.match(/[?&]hm=([a-f0-9]+)/);
+    return match ? match[1] : null;
+}
+
+function isScamUrl(url) {
+    return SCAM_IDS.has(extractAttachmentId(url)) || SCAM_HM.has(extractHm(url));
 }
 
 function isScamMessage(message) {
-    const attachments = message.attachments || [];
-    for (const a of attachments) {
-        if (SCAM_IDS.has(extractAttachmentId(a.url))) return true;
-        if (SCAM_IDS.has(extractAttachmentId(a.proxy_url))) return true;
+    for (const a of (message.attachments || [])) {
+        if (isScamUrl(a.url) || isScamUrl(a.proxy_url)) return true;
     }
-    const embeds = message.embeds || [];
-    for (const e of embeds) {
+    for (const e of (message.embeds || [])) {
         for (const url of [e.image?.url, e.image?.proxy_url, e.thumbnail?.url, e.thumbnail?.proxy_url]) {
-            if (SCAM_IDS.has(extractAttachmentId(url))) return true;
-        }
-    }
-    const content = message.content || "";
-    if (
-        content.includes("cdn.discordapp.com/attachments/") ||
-        content.includes("media.discordapp.net/attachments/")
-    ) {
-        for (const token of content.split(/\s+/)) {
-            if (SCAM_IDS.has(extractAttachmentId(token))) return true;
+            if (isScamUrl(url)) return true;
         }
     }
     return false;
@@ -71,3 +74,10 @@ export default {
         FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
     },
 };
+```
+
+Commit this, wait for the green action, then disable/re-enable the plugin and test again. The `hm=` hash matching means it'll catch the same scam images even if they get re-uploaded to a new link.
+
+Also — one quick thing to verify first. Run this eval before testing so we can see exactly what a scam message looks like on your end:
+```
+/eval code: window.vendetta.metro.common.FluxDispatcher.subscribe("MESSAGE_CREATE", function(e){ if(e.message.attachments && e.message.attachments.length > 0) alert(JSON.stringify(e.message.attachments[0])) })
