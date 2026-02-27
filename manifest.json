@@ -1,0 +1,12 @@
+{
+    "name": "AutoBanScammer",
+    "description": "Automatically bans users who send specific scam image attachments",
+    "authors": [
+        {
+            "name": "you",
+            "id": "877502759404974110"
+        }
+    ],
+    "main": "index.js",
+    "hash": ""
+}
