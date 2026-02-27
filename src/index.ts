@@ -1,201 +1,217 @@
-// No imports - use window.vendetta directly (Kettu evals plugins inside a function body)
+const MY_ID = "877502759404974110";
 
-// ─── Default known scam attachment IDs ───────────────────────────────────────
-// Add the raw numeric ID from the CDN URL:
-// https://cdn.discordapp.com/attachments/CHANNEL_ID/**ATTACHMENT_ID**/image.png
-const DEFAULT_SCAM_IDS: string[] = [
-  "1476688857930924105",
-  "1476688858375782701",
-  "1476688858774110268",
-  "1476688859076104313",
+const DEFAULT_SCAM_IDS = [
+    "1476688857930924105",
+    "1476688858375782701",
+    "1476688858774110268",
+    "1476688859076104313",
 ];
 
-// ─── Session dedup (don't ?ban the same person twice per session) ─────────────
+const storage = window.vendetta.storage.wrapSync(
+    window.vendetta.storage.createStorage(
+        window.vendetta.storage.createMMKVBackend("AutoBanScammer")
+    )
+);
+
+// Track already-banned users this session to avoid duplicate bans
 const bannedThisSession = new Set<string>();
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getScamIds(): string[] {
-  try {
-    const custom: string[] = (window as any).vendetta.storage.customIds ?? [];
-    return [...DEFAULT_SCAM_IDS, ...custom];
-  } catch {
-    return [...DEFAULT_SCAM_IDS];
-  }
+function extractAttachmentId(url: string | undefined): string | null {
+    if (typeof url !== "string") return null;
+    if (
+        !url.includes("cdn.discordapp.com/attachments/") &&
+        !url.includes("media.discordapp.net/attachments/")
+    ) return null;
+    const parts = url.split("/");
+    const idx = parts.indexOf("attachments");
+    if (idx === -1) return null;
+    const id = parts[idx + 2];
+    if (!id) return null;
+    return id.split("?")[0];
 }
 
-// Pull all attachment IDs out of a plain-text message body.
-// Scammers paste raw CDN links instead of uploading files, so
-// message.attachments is [] but message.content has the URL.
-function extractIdsFromContent(content: string): string[] {
-  const ids: string[] = [];
-  const re = /cdn\.discordapp\.com\/attachments\/\d+\/(\d+)\//g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) ids.push(m[1]);
-  return ids;
+function getAllScamIds(): Set<string> {
+    const extra: string[] = storage.customIds ?? [];
+    return new Set([...DEFAULT_SCAM_IDS, ...extra]);
 }
 
-// Core check: does this message contain a known scam image?
-function checkAndBan(message: any, guildId: string | undefined, channelId: string): void {
-  // Skip bots, skip DMs (no guildId = DM)
-  if (!message?.author || message.author.bot) return;
-  if (!guildId) return;
-
-  const scamIds = getScamIds();
-  let found = false;
-
-  // 1. Check proper attachment objects (in case they come through normally)
-  if (message.attachments?.length) {
-    for (const att of message.attachments) {
-      // att.id is the attachment snowflake; fall back to parsing the URL
-      const attId: string =
-        att.id ?? att.url?.match(/\/attachments\/\d+\/(\d+)\//)?.[1] ?? "";
-      if (attId && scamIds.includes(attId)) {
-        found = true;
-        break;
-      }
+function isScamMessage(message: any): boolean {
+    const scamIds = getAllScamIds();
+    for (const a of (message.attachments ?? [])) {
+        if (scamIds.has(extractAttachmentId(a.url) ?? "")) return true;
+        if (scamIds.has(extractAttachmentId(a.proxy_url) ?? "")) return true;
     }
-  }
-
-  // 2. Check plain-text content for CDN links (THIS is what was missing before)
-  if (!found && message.content) {
-    for (const id of extractIdsFromContent(message.content)) {
-      if (scamIds.includes(id)) {
-        found = true;
-        break;
-      }
+    for (const e of (message.embeds ?? [])) {
+        for (const u of [e.image?.url, e.image?.proxy_url, e.thumbnail?.url, e.thumbnail?.proxy_url]) {
+            if (scamIds.has(extractAttachmentId(u) ?? "")) return true;
+        }
     }
-  }
-
-  if (!found) return;
-  if (bannedThisSession.has(message.author.id)) return;
-
-  bannedThisSession.add(message.author.id);
-
-  try {
-    const sendMessage = (window as any).vendetta.metro.findByProps("sendMessage");
-    sendMessage.sendMessage(channelId, { content: `?ban ${message.author.id}` });
-  } catch (e) {
-    console.error("[AutoBan] Failed to send ban command:", e);
-  }
+    const content: string = message.content ?? "";
+    if (content.includes("cdn.discordapp.com/attachments/") || content.includes("media.discordapp.net/attachments/")) {
+        for (const token of content.split(/\s+/)) {
+            if (scamIds.has(extractAttachmentId(token) ?? "")) return true;
+        }
+    }
+    return false;
 }
 
-// ─── Flux handler ─────────────────────────────────────────────────────────────
-
-function onMessageCreate(event: any): void {
-  checkAndBan(event.message, event.guildId, event.channelId);
+function banUser(channelId: string, authorId: string) {
+    if (bannedThisSession.has(authorId)) return;
+    bannedThisSession.add(authorId);
+    const MessageModule = window.vendetta.metro.findByProps("sendMessage", "editMessage");
+    if (!MessageModule) return;
+    MessageModule.sendMessage(channelId, { content: `?ban ${authorId}` });
 }
 
-// ─── Settings page ────────────────────────────────────────────────────────────
-
-function SettingsPage(): any {
-  const React = (window as any).vendetta.metro.common.React;
-  const { FormSection, FormRow, FormInput, FormDivider } =
-    (window as any).vendetta.ui.components.Forms;
-  const storage = (window as any).vendetta.storage;
-
-  const [inputValue, setInputValue] = React.useState("");
-  const [customIds, setCustomIds] = React.useState<string[]>(
-    storage.customIds ?? []
-  );
-
-  function addId(): void {
-    const raw: string = inputValue.trim();
-    if (!raw) return;
-
-    // Accept either a full CDN URL or a bare numeric ID
-    const match = raw.match(/\/attachments\/\d+\/(\d+)\//);
-    const id = match ? match[1] : raw;
-
-    if (!id.match(/^\d+$/)) {
-      // Not a valid snowflake
-      return;
+// Fires for every new real-time message across all channels
+function onMessageCreate(event: any) {
+    try {
+        const message = event.message;
+        if (!message) return;
+        const authorId: string = message.author?.id;
+        const channelId: string = message.channel_id ?? event.channelId;
+        if (!authorId || !channelId || authorId === MY_ID) return;
+        if (!isScamMessage(message)) return;
+        banUser(channelId, authorId);
+    } catch (e) {
+        console.error("[AutoBanScammer] onMessageCreate error:", e);
     }
-    if (customIds.includes(id) || DEFAULT_SCAM_IDS.includes(id)) {
-      setInputValue("");
-      return;
-    }
-
-    const updated = [...customIds, id];
-    storage.customIds = updated;
-    setCustomIds(updated);
-    setInputValue("");
-  }
-
-  function removeId(id: string): void {
-    const updated = customIds.filter((x: string) => x !== id);
-    storage.customIds = updated;
-    setCustomIds(updated);
-  }
-
-  return React.createElement(
-    React.Fragment,
-    null,
-
-    // ── Default IDs (read-only) ──
-    React.createElement(
-      FormSection,
-      { title: "Default Scam IDs (built-in)" },
-      ...DEFAULT_SCAM_IDS.map((id: string) =>
-        React.createElement(FormRow, {
-          key: id,
-          label: id,
-          subLabel: "Built-in — cannot be removed",
-        })
-      )
-    ),
-
-    // ── Add new ID ──
-    React.createElement(
-      FormSection,
-      { title: "Add a Scam ID" },
-      React.createElement(FormInput, {
-        placeholder: "Paste CDN URL or numeric attachment ID",
-        value: inputValue,
-        onChange: (v: string) => setInputValue(v),
-        returnKeyType: "done",
-        onSubmitEditing: addId,
-      }),
-      React.createElement(FormRow, {
-        label: "Add ID",
-        onPress: addId,
-      })
-    ),
-
-    // ── Custom IDs (removable) ──
-    customIds.length > 0 &&
-      React.createElement(
-        FormSection,
-        { title: "Custom Scam IDs" },
-        ...customIds.map((id: string) =>
-          React.createElement(FormRow, {
-            key: id,
-            label: id,
-            subLabel: "Tap to remove",
-            onPress: () => removeId(id),
-          })
-        )
-      )
-  );
 }
 
-// ─── Plugin lifecycle ─────────────────────────────────────────────────────────
+// Fires when Discord loads a channel's history (catches messages sent while offline)
+function onLoadMessagesSuccess(event: any) {
+    try {
+        const messages: any[] = event.messages ?? [];
+        for (const message of messages) {
+            const authorId: string = message.author?.id;
+            const channelId: string = message.channel_id;
+            if (!authorId || !channelId || authorId === MY_ID) continue;
+            if (!isScamMessage(message)) continue;
+            banUser(channelId, authorId);
+        }
+    } catch (e) {
+        console.error("[AutoBanScammer] onLoadMessagesSuccess error:", e);
+    }
+}
+
+// Scans all messages already in the Discord message store at plugin load time.
+// This catches the case where LOAD_MESSAGES_SUCCESS already fired before the plugin was ready.
+function scanExistingMessages() {
+    try {
+        const MessageStore = window.vendetta.metro.findByStoreName("MessageStore");
+        if (!MessageStore) return;
+
+        // getMessages returns a map of channelId -> message collection
+        const channelCache = MessageStore._channelMessages 
+            ?? MessageStore.channelMessages 
+            ?? (MessageStore.getMessages && null); // fallback
+
+        if (channelCache) {
+            for (const channelId of Object.keys(channelCache)) {
+                const collection = channelCache[channelId];
+                const messages = collection?._array ?? collection?.toArray?.() ?? [];
+                for (const message of messages) {
+                    const authorId: string = message.author?.id;
+                    if (!authorId || authorId === MY_ID) continue;
+                    if (!isScamMessage(message)) continue;
+                    banUser(channelId, authorId);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("[AutoBanScammer] scanExistingMessages error:", e);
+    }
+}
+
+function Settings() {
+    const React = window.vendetta.metro.common.React;
+    const { Forms } = window.vendetta.ui.components;
+    const { FormRow, FormSection, FormInput, FormDivider } = Forms;
+
+    const [inputUrl, setInputUrl] = React.useState("");
+    const [customIds, setCustomIds] = React.useState([...(storage.customIds ?? [])]);
+
+    function refresh() {
+        setCustomIds([...(storage.customIds ?? [])]);
+    }
+
+    function addUrl() {
+        const trimmed = inputUrl.trim();
+        const id = extractAttachmentId(trimmed);
+        if (!id) {
+            window.vendetta.ui.toasts.showToast("Invalid Discord CDN URL!");
+            return;
+        }
+        if (DEFAULT_SCAM_IDS.includes(id) || (storage.customIds ?? []).includes(id)) {
+            window.vendetta.ui.toasts.showToast("That ID is already in the list!");
+            return;
+        }
+        storage.customIds = [...(storage.customIds ?? []), id];
+        setInputUrl("");
+        refresh();
+        window.vendetta.ui.toasts.showToast("Added!");
+    }
+
+    function removeId(id: string) {
+        storage.customIds = (storage.customIds ?? []).filter((i: string) => i !== id);
+        refresh();
+    }
+
+    return React.createElement(React.Fragment, null,
+        React.createElement(FormSection, { title: "Add Scam URL" },
+            React.createElement(FormInput, {
+                placeholder: "Paste Discord CDN URL here",
+                value: inputUrl,
+                onChange: setInputUrl,
+                returnKeyType: "done",
+                onSubmitEditing: addUrl,
+            }),
+            React.createElement(FormRow, {
+                label: "Add URL",
+                onPress: addUrl,
+            }),
+        ),
+        React.createElement(FormSection, { title: "Default IDs (built-in, cannot remove)" },
+            DEFAULT_SCAM_IDS.map((id, i) =>
+                React.createElement(React.Fragment, { key: id },
+                    React.createElement(FormRow, { label: id }),
+                    i < DEFAULT_SCAM_IDS.length - 1 ? React.createElement(FormDivider, null) : null,
+                )
+            )
+        ),
+        customIds.length > 0
+            ? React.createElement(FormSection, { title: "Custom IDs (tap to remove)" },
+                customIds.map((id: string, i: number) =>
+                    React.createElement(React.Fragment, { key: id },
+                        React.createElement(FormRow, {
+                            label: id,
+                            onPress: () => window.vendetta.ui.alerts.showConfirmationAlert({
+                                title: "Remove ID",
+                                content: `Remove ${id} from the ban list?`,
+                                confirmText: "Remove",
+                                onConfirm: () => removeId(id),
+                                cancelText: "Cancel",
+                            }),
+                        }),
+                        i < customIds.length - 1 ? React.createElement(FormDivider, null) : null,
+                    )
+                )
+            )
+            : null,
+    );
+}
 
 export default {
-  onLoad() {
-    const { FluxDispatcher } = (window as any).vendetta.metro.common;
-    FluxDispatcher.subscribe("MESSAGE_CREATE", onMessageCreate);
-
-    // Register settings page
-    (window as any).vendetta.ui.settings.registerSettings(
-      "AutoBanScammer",
-      SettingsPage
-    );
-  },
-
-  onUnload() {
-    const { FluxDispatcher } = (window as any).vendetta.metro.common;
-    FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessageCreate);
-    bannedThisSession.clear();
-  },
+    onLoad() {
+        window.vendetta.metro.common.FluxDispatcher.subscribe("MESSAGE_CREATE", onMessageCreate);
+        window.vendetta.metro.common.FluxDispatcher.subscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
+        // Scan whatever messages are already loaded in memory right now
+        scanExistingMessages();
+    },
+    onUnload() {
+        window.vendetta.metro.common.FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessageCreate);
+        window.vendetta.metro.common.FluxDispatcher.unsubscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
+        bannedThisSession.clear();
+    },
+    settings: Settings,
 };
