@@ -2,6 +2,11 @@
     "name": "autobanscammer",
     "version": "1.0.0",
     "scripts": {
-        "build": "node build.js"
+        "build": "rollup -c"
+    },
+    "devDependencies": {
+        "@rollup/plugin-node-resolve": "^15.0.0",
+        "rollup": "^3.0.0",
+        "rollup-plugin-swc3": "^0.11.0"
     }
 }
