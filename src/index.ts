@@ -13,7 +13,7 @@ const storage = window.vendetta.storage.wrapSync(
     )
 );
 
-// Track already-banned users this session to avoid spamming duplicate bans
+// Track already-banned users this session to avoid duplicate bans
 const bannedThisSession = new Set<string>();
 
 function extractAttachmentId(url: string | undefined): string | null {
@@ -37,7 +37,6 @@ function getAllScamIds(): Set<string> {
 
 function isScamMessage(message: any): boolean {
     const scamIds = getAllScamIds();
-
     for (const a of (message.attachments ?? [])) {
         if (scamIds.has(extractAttachmentId(a.url) ?? "")) return true;
         if (scamIds.has(extractAttachmentId(a.proxy_url) ?? "")) return true;
@@ -64,7 +63,7 @@ function banUser(channelId: string, authorId: string) {
     MessageModule.sendMessage(channelId, { content: `?ban ${authorId}` });
 }
 
-// Fires for every new message in real time, including messages in channels you aren't viewing
+// Fires for every new real-time message across all channels
 function onMessageCreate(event: any) {
     try {
         const message = event.message;
@@ -79,7 +78,7 @@ function onMessageCreate(event: any) {
     }
 }
 
-// Fires when Discord loads a channel's message history — catches messages sent while app was closed
+// Fires when Discord loads a channel's history (catches messages sent while offline)
 function onLoadMessagesSuccess(event: any) {
     try {
         const messages: any[] = event.messages ?? [];
@@ -92,6 +91,35 @@ function onLoadMessagesSuccess(event: any) {
         }
     } catch (e) {
         console.error("[AutoBanScammer] onLoadMessagesSuccess error:", e);
+    }
+}
+
+// Scans all messages already in the Discord message store at plugin load time.
+// This catches the case where LOAD_MESSAGES_SUCCESS already fired before the plugin was ready.
+function scanExistingMessages() {
+    try {
+        const MessageStore = window.vendetta.metro.findByStoreName("MessageStore");
+        if (!MessageStore) return;
+
+        // getMessages returns a map of channelId -> message collection
+        const channelCache = MessageStore._channelMessages 
+            ?? MessageStore.channelMessages 
+            ?? (MessageStore.getMessages && null); // fallback
+
+        if (channelCache) {
+            for (const channelId of Object.keys(channelCache)) {
+                const collection = channelCache[channelId];
+                const messages = collection?._array ?? collection?.toArray?.() ?? [];
+                for (const message of messages) {
+                    const authorId: string = message.author?.id;
+                    if (!authorId || authorId === MY_ID) continue;
+                    if (!isScamMessage(message)) continue;
+                    banUser(channelId, authorId);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("[AutoBanScammer] scanExistingMessages error:", e);
     }
 }
 
@@ -177,6 +205,8 @@ export default {
     onLoad() {
         window.vendetta.metro.common.FluxDispatcher.subscribe("MESSAGE_CREATE", onMessageCreate);
         window.vendetta.metro.common.FluxDispatcher.subscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
+        // Scan whatever messages are already loaded in memory right now
+        scanExistingMessages();
     },
     onUnload() {
         window.vendetta.metro.common.FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessageCreate);
