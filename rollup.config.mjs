@@ -4,9 +4,9 @@ export default {
     input: "src/index.js",
     output: {
         file: "dist/index.js",
-        format: "es"
+        format: "cjs",
+        exports: "default"
     },
-    external: ["@vendetta/metro", "@vendetta/metro/common"],
     plugins: [
         nodeResolve(),
         swc({
