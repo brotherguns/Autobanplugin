@@ -1,5 +1,5 @@
-import { fluxDispatcher } from '@vendetta/metro/common';
-import { findByProps } from '@vendetta/metro';
+import { findByProps } from '@metro/wrappers';
+import { FluxDispatcher } from '@metro/common';
 
 const MY_ID = "877502759404974110";
 const SCAM_IDS = new Set([
@@ -8,76 +8,68 @@ const SCAM_IDS = new Set([
     "1476688858774110268",
     "1476688859076104313"
 ]);
-const SCAM_HM = new Set([
-    "d75ba302ba17fab02ad7a1de76e7282af8c86d6c7a17b0bfb5762dd67f7b9462",
-    "21711a1fd5242d05e2ee36263b3b98e45423047a45e34ea7daecafed581ec76d",
-    "6425e2a23c039ff644c62025b31716a3a5969621d7ee837fb39d4412dfd3dc77",
-    "26aec64263f89c79d71455f6e8c47ffe6d2180c6d006bfb7b9cba260699fbcab"
-]);
 function extractAttachmentId(url) {
     if (typeof url !== "string") return null;
-    var parts = url.split("/");
-    var idx = parts.indexOf("attachments");
+    if (!url.includes("cdn.discordapp.com/attachments/") && !url.includes("media.discordapp.net/attachments/")) return null;
+    const parts = url.split("/");
+    const idx = parts.indexOf("attachments");
     if (idx === -1) return null;
-    var id = parts[idx + 2];
+    // URL structure: .../attachments/channelId/attachmentId/filename
+    const id = parts[idx + 2];
     if (!id) return null;
+    // Strip any query params
     return id.split("?")[0];
 }
-function extractHm(url) {
-    if (typeof url !== "string") return null;
-    var idx = url.indexOf("hm=");
-    if (idx === -1) return null;
-    var val = url.substring(idx + 3);
-    var end = val.indexOf("&");
-    return end === -1 ? val : val.substring(0, end);
-}
-function isScamUrl(url) {
-    return SCAM_IDS.has(extractAttachmentId(url)) || SCAM_HM.has(extractHm(url));
-}
 function isScamMessage(message) {
-    var i, a, e, urls;
-    var attachments = message.attachments || [];
-    for(i = 0; i < attachments.length; i++){
-        a = attachments[i];
-        if (isScamUrl(a.url) || isScamUrl(a.proxy_url)) return true;
+    // Check attachments
+    for (const a of message.attachments ?? []){
+        if (SCAM_IDS.has(extractAttachmentId(a.url) ?? "")) return true;
+        if (SCAM_IDS.has(extractAttachmentId(a.proxy_url) ?? "")) return true;
     }
-    var embeds = message.embeds || [];
-    for(i = 0; i < embeds.length; i++){
-        e = embeds[i];
-        urls = [
-            e.image ? e.image.url : null,
-            e.image ? e.image.proxy_url : null,
-            e.thumbnail ? e.thumbnail.url : null,
-            e.thumbnail ? e.thumbnail.proxy_url : null
-        ];
-        for(var j = 0; j < urls.length; j++){
-            if (isScamUrl(urls[j])) return true;
+    // Check embeds
+    for (const e of message.embeds ?? []){
+        for (const u of [
+            e.image?.url,
+            e.image?.proxy_url,
+            e.thumbnail?.url,
+            e.thumbnail?.proxy_url
+        ]){
+            if (SCAM_IDS.has(extractAttachmentId(u) ?? "")) return true;
+        }
+    }
+    // Check raw content text
+    const content = message.content ?? "";
+    if (content.includes("cdn.discordapp.com/attachments/") || content.includes("media.discordapp.net/attachments/")) {
+        for (const token of content.split(/\s+/)){
+            if (SCAM_IDS.has(extractAttachmentId(token) ?? "")) return true;
         }
     }
     return false;
 }
 function onMessage(event) {
     try {
-        var message = event && event.message;
+        const message = event.message;
         if (!message) return;
-        var authorId = message.author && message.author.id;
-        var channelId = event.channelId || message.channel_id;
+        const authorId = message.author?.id;
+        const channelId = message.channel_id ?? event.channelId;
+        // Never act on our own messages, and bail if no channelId
         if (!authorId || !channelId || authorId === MY_ID) return;
         if (!isScamMessage(message)) return;
-        var MessageModule = findByProps("sendMessage", "editMessage");
+        const MessageModule = findByProps("sendMessage", "editMessage");
+        if (!MessageModule) return;
         MessageModule.sendMessage(channelId, {
-            content: "?ban " + authorId
+            content: `?ban ${authorId}`
         });
-    } catch (err) {
-        console.error("[AutoBanScammer]", err);
+    } catch (e) {
+        console.error("[AutoBanScammer] Error:", e);
     }
 }
 var index = {
-    onLoad: function() {
-        fluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
+    onLoad () {
+        FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
     },
-    onUnload: function() {
-        fluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
+    onUnload () {
+        FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
     }
 };
 
