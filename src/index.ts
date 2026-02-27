@@ -1,6 +1,5 @@
 const MY_ID = "877502759404974110";
 
-// Default hardcoded scam IDs
 const DEFAULT_SCAM_IDS = [
     "1476688857930924105",
     "1476688858375782701",
@@ -8,12 +7,14 @@ const DEFAULT_SCAM_IDS = [
     "1476688859076104313",
 ];
 
-// Persistent storage for user-added IDs
 const storage = window.vendetta.storage.wrapSync(
     window.vendetta.storage.createStorage(
         window.vendetta.storage.createMMKVBackend("AutoBanScammer")
     )
 );
+
+// Track already-banned users this session to avoid spamming duplicate bans
+const bannedThisSession = new Set<string>();
 
 function extractAttachmentId(url: string | undefined): string | null {
     if (typeof url !== "string") return null;
@@ -55,7 +56,16 @@ function isScamMessage(message: any): boolean {
     return false;
 }
 
-function onMessage(event: any) {
+function banUser(channelId: string, authorId: string) {
+    if (bannedThisSession.has(authorId)) return;
+    bannedThisSession.add(authorId);
+    const MessageModule = window.vendetta.metro.findByProps("sendMessage", "editMessage");
+    if (!MessageModule) return;
+    MessageModule.sendMessage(channelId, { content: `?ban ${authorId}` });
+}
+
+// Fires for every new message in real time, including messages in channels you aren't viewing
+function onMessageCreate(event: any) {
     try {
         const message = event.message;
         if (!message) return;
@@ -63,11 +73,25 @@ function onMessage(event: any) {
         const channelId: string = message.channel_id ?? event.channelId;
         if (!authorId || !channelId || authorId === MY_ID) return;
         if (!isScamMessage(message)) return;
-        const MessageModule = window.vendetta.metro.findByProps("sendMessage", "editMessage");
-        if (!MessageModule) return;
-        MessageModule.sendMessage(channelId, { content: `?ban ${authorId}` });
+        banUser(channelId, authorId);
     } catch (e) {
-        console.error("[AutoBanScammer]", e);
+        console.error("[AutoBanScammer] onMessageCreate error:", e);
+    }
+}
+
+// Fires when Discord loads a channel's message history — catches messages sent while app was closed
+function onLoadMessagesSuccess(event: any) {
+    try {
+        const messages: any[] = event.messages ?? [];
+        for (const message of messages) {
+            const authorId: string = message.author?.id;
+            const channelId: string = message.channel_id;
+            if (!authorId || !channelId || authorId === MY_ID) continue;
+            if (!isScamMessage(message)) continue;
+            banUser(channelId, authorId);
+        }
+    } catch (e) {
+        console.error("[AutoBanScammer] onLoadMessagesSuccess error:", e);
     }
 }
 
@@ -151,10 +175,13 @@ function Settings() {
 
 export default {
     onLoad() {
-        window.vendetta.metro.common.FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
+        window.vendetta.metro.common.FluxDispatcher.subscribe("MESSAGE_CREATE", onMessageCreate);
+        window.vendetta.metro.common.FluxDispatcher.subscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
     },
     onUnload() {
-        window.vendetta.metro.common.FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
+        window.vendetta.metro.common.FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessageCreate);
+        window.vendetta.metro.common.FluxDispatcher.unsubscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
+        bannedThisSession.clear();
     },
     settings: Settings,
 };
