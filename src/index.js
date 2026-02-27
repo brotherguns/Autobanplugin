@@ -1,4 +1,4 @@
-import { FluxDispatcher } from "@vendetta/metro/common";
+import { fluxDispatcher } from "@vendetta/metro/common";
 import { findByProps } from "@vendetta/metro";
 
 const MY_ID = "877502759404974110";
@@ -80,9 +80,9 @@ function onMessage(event) {
 
 export default {
     onLoad: function() {
-        FluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
+        fluxDispatcher.subscribe("MESSAGE_CREATE", onMessage);
     },
     onUnload: function() {
-        FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
+        fluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessage);
     },
 };
