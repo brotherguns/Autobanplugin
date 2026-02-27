@@ -1,15 +1,12 @@
 {
     "name": "AutoBanScammer",
-    "description": "Automatically bans users who send specific scam images.",
+    "description": "Automatically bans users who send specific scam image attachments",
     "authors": [
         {
-            "name": "brotherguns",
+            "name": "you",
             "id": "877502759404974110"
         }
     ],
     "main": "index.js",
-    "vendetta": {
-        "icon": "ic_ban"
-    },
     "hash": "9d4e591b645eec40e1944d164b185fa55e15265df550e2845efe14f1bccd8e9b"
 }
